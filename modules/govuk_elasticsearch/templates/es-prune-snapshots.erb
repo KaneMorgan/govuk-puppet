@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -e
+
+# Redirect stdout and stderr to syslog
+exec 1> >(/usr/bin/logger -s -t $(basename $0)) 2>&1
+
+ES_REPO=<%= @es_repo %>
+LIMIT=<%= @es_snapshot_limit %>
+
+# Get a list of snapshots in the specified repo
+
+SNAPSHOTS=`/usr/bin/curl -s -XGET "127.0.0.1:9200/_snapshot/"${ES_REPO}"/_all" | /usr/bin/jq -r ".snapshots[:-${LIMIT}][].snapshot"`
+
+
+# Loop through results deleting snapshots we do not want.  Note that "deleting" snapshots via the api will ensure
+# that only the oldest snapshots are deleted and that snapshots aren't left orphaned.
+
+for SNAPSHOT in $SNAPSHOTS; do
+
+    /usr/bin/curl -s -XDELETE "127.0.0.1:9200/_snapshot/"${ES_REPO}"/"${SNAPSHOT}"?pretty"
+
+done
+
+if [ $? == 0 ]
+then
+  STATUS=0
+else
+  STATUS=1
+fi
