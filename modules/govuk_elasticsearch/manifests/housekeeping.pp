@@ -14,30 +14,40 @@
 # [*user*]
 #   User that invokes backup
 #
+# [*enabled*]
+#   Determines whether this task will run
+#
 class govuk_elasticsearch::housekeeping(
   $es_repo = undef,
   $es_snapshot_limit = 5,
-  $user = 'govuk-backup'
+  $user = 'govuk-backup',
+  $enabled = false
 ) {
 
+if $enabled {
+    # This is a CLI JSON processor which allows us to "awk" the data on the fly
+    package { 'jq':
+      ensure => installed,
+    }
 
-  # This is a CLI JSON processor which allows us to "awk" the data on the fly
-  package { 'jq':
-    ensure => installed,
-  }
+    file { 'es-prune-snapshots':
+      ensure  => file,
+      path    => '/usr/local/bin/es-remove-old-snapshots',
+      content => template('govuk_elasticsearch/es-prune-snapshots.erb'),
+      owner   => $user,
+      group   => $user,
+      mode    => '0550',
+    }
 
-  file { 'es-prune-snapshots':
-    ensure  => file,
-    path    => '/usr/local/bin/es-remove-old-snapshots',
-    content => template('govuk_elasticsearch/es-prune-snapshots.erb'),
-    owner   => $user,
-    group   => $user,
-    mode    => '0550',
-  }
 
-  cron { 'elasticsearch-remove-old-snapshots':
-    command => '/usr/local/bin/es-prune-snapshots',
-    user    => $user,
-    weekday => 3,
+
+    cron { 'elasticsearch-remove-old-snapshots':
+      ensure  => present,
+      command => '/usr/local/bin/es-prune-snapshots',
+      user    => $user,
+      weekday => 3,
+    }
+
+
   }
 }
