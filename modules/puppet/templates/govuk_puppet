@@ -77,6 +77,7 @@ disable)
 		echo "Creating $LOCKFILE .."
 		touch $LOCKFILE || { echo "Unable to create lock  '$LOCKFILE'" 1>&2 ; exit 1; }
 		echo "$REPLY - $MYID" >> $LOCKFILE
+		do_puppet
 	fi
 	
 	exit 0;
@@ -140,7 +141,3 @@ enable)
 	;;
 
 esac
-
-#Questions:
-#-which actions should be trapped and disallowed in the event of a disable lock existing?
-#-should this still be written in bash?
