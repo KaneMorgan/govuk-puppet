@@ -38,6 +38,21 @@ do_puppet() {
 
 }
 
+
+usage() {
+
+	programname=$0
+
+	echo "usage: $programname"
+	echo "	list-locks : show all current locks "
+	echo "	remove-lock: remove one lock, takes numeric identifier as parameter "
+	echo "	disable: add a lock "
+	echo "	enable: remove all locks "
+
+	exit 1
+
+}
+
 PUPPET_STATE_DIR=`puppet config print statedir`
 GOVUK_STATE_DIR="$PUPPET_STATE_DIR/govuk"
 
@@ -130,6 +145,13 @@ enable)
         	done
 		do_puppet
 	fi
+	exit 0;
+	;;
+
+
+help)
+
+	usage
 	exit 0;
 	;;
 
