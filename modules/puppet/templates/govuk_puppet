@@ -15,12 +15,21 @@ listlocks() {
 	#uuid to the filename. Keep the reason, name and uuid as
 	#the lockfile content
 
-        for filename in *.lock
-                do
-                        line=$(head -n 1 "$filename") #Grab file contents
-                        echo "$filename : $line"
-                done
-        echo;
+	#TODO
+	#If there are no locks, it should be detected and reported
+
+	if ls *.lock 1> /dev/null 2>&1; then
+
+        	for filename in *.lock
+               	 	do
+               	        	line=$(head -n 1 "$filename") #Grab file contents
+               	         	echo "$filename : $line"
+               	 	done
+        	echo
+
+	else
+		echo "No lock files present"
+	fi
 
 }
 
@@ -63,6 +72,7 @@ GOVUK_STATE_DIR="$PUPPET_STATE_DIR/govuk"
 cd "$GOVUK_STATE_DIR" || { echo "Unable to access locks directory: '$GOVUK_STATE_DIR'" 1>&2 ; exit 1; }
 
 echo "State directory:" "$GOVUK_STATE_DIR"
+echo
 
 case $1 in
 
@@ -109,6 +119,10 @@ remove-lock)
 	#remove lock by identifier - check the identifier is actually in the file
 	#to stop any accidental rm's from happening, though the suffix and cwd are
 	#probably sufficient.
+
+
+	#TODO
+	#If it is the last lock being removed, call puppet agent --enable
 
 	MYID=$2
 
