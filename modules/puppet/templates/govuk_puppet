@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eu
+#set -eu
 
 # Re-exec self with sudo if not root.
 if [ "$(id -u)" -ne "0" ]; then
@@ -8,11 +8,139 @@ fi
 
 START_TIME=`date +%s%3N`
 
-# Allow return code 2 in case -v/--detailed-exitcodes is passed.
-RBENV_VERSION=1.9.3 /usr/local/bin/govuk_setenv default puppet agent --onetime --no-daemonize "$@" || [ $? -eq 2 ]
+listlocks() {
 
-TIME_TOOK=$((`date +%s%3N`-START_TIME))
-echo "<%= @fqdn_metrics %>.puppet.run_duration:${TIME_TOOK}|ms" | nc -w 1 -u localhost 8125
+	#list all current locks, date, name, reason, identifier
+        #simplify this structure. push the date and a (kind of) 
+	#uuid to the filename. Keep the reason, name and uuid as
+	#the lockfile content
 
-# We should only reach here if a last_run_summary was written.
-/usr/local/bin/puppet_passive_check_update >/dev/null
+        for filename in *.lock
+                do
+                        line=$(head -n 1 "$filename") #Grab file contents
+                        echo "$filename : $line"
+                done
+        echo;
+
+}
+
+do_puppet() {
+
+	# Allow return code 2 in case -v/--detailed-exitcodes is passed.
+	RBENV_VERSION=1.9.3 /usr/local/bin/govuk_setenv default puppet agent --onetime --no-daemonize "$@" || [ $? -eq 2 ]
+
+	TIME_TOOK=$((`date +%s%3N`-START_TIME))
+	echo "<%= @fqdn_metrics %>.puppet.run_duration:${TIME_TOOK}|ms" | nc -w 1 -u localhost 8125
+
+	# We should only reach here if a last_run_summary was written.
+	/usr/local/bin/puppet_passive_check_update >/dev/null
+	exit 0;
+
+}
+
+PUPPET_STATE_DIR=`puppet config print statedir`
+GOVUK_STATE_DIR="$PUPPET_STATE_DIR/govuk"
+
+#make it if it isn't
+[ -d $GOVUK_STATE_DIR ] || mkdir "$GOVUK_STATE_DIR"
+
+#change working directory or die
+cd "$GOVUK_STATE_DIR" || { echo "Unable to access locks directory: '$GOVUK_STATE_DIR'" 1>&2 ; exit 1; }
+
+echo "State directory:" "$GOVUK_STATE_DIR"
+
+case $1 in
+
+disable)
+
+	#require a reason, determine a name
+	#append a datetime stamp to assist in locating old / forgotten locks
+	#write the lockfile containing the reason and name, then 
+	#do puppet agent --disable
+
+	LOCK_DATE=`date +%Y-%m-%d`	
+
+	#Capture initial login user
+	IAM=`who -am | awk '{ print $1 }'`
+
+	#Capture a reason
+	read -p "Please enter reason: " -r
+
+	# Check if string is empty using -z
+	if [[ -z "$REPLY" ]]; then
+   		echo "Reason required; exiting."
+   	exit 1;
+	else
+   	#Create the lock
+		MYID=`date +%s`
+		LOCKFILE=puppet_disable_lock.$IAM.$LOCK_DATE.$MYID.lock
+		echo "Creating $LOCKFILE .."
+		touch $LOCKFILE || { echo "Unable to create lock  '$LOCKFILE'" 1>&2 ; exit 1; }
+		echo "$REPLY - $MYID" >> $LOCKFILE
+	fi
+	
+	exit 0;
+	;;
+
+list-locks)
+
+	listlocks;
+	exit 0;
+	;;
+		
+remove-lock)
+
+	#remove lock by identifier - check the identifier is actually in the file
+	#to stop any accidental rm's from happening, though the suffix and cwd are
+	#probably sufficient.
+
+	MYID=$2
+
+	if [ -z "$MYID" ]
+	then
+		echo "Identifier required; exiting.."
+		exit 1;
+	fi
+
+	for filename in *.$MYID.lock
+                do
+			#if [ ! -z $(grep "$MYID" $filename) ]; then
+				rm $filename && echo "Removed lock: $filename";
+			#fi
+                done
+	
+	exit 0;
+	;;
+
+enable)
+
+	#iterate over lockfiles and remove all of them
+	#(require a confirmation after calling list-locks)
+	
+	listlocks;
+	read -p "Are you sure? (y/n): " -n 1 -r
+	echo    # (optional) move to a new line
+	if [[ $REPLY =~ ^[Yy]$ ]]
+	then
+		for filename in *.lock
+		do
+                	#rm $filename
+               		echo $filename
+        	done
+		do_puppet
+	fi
+	exit 0;
+	;;
+
+*)
+
+	#Everything else just pass it through
+	do_puppet
+	exit 0;
+	;;
+
+esac
+
+#Questions:
+#-which actions should be trapped and disallowed in the event of a disable lock existing?
+#-should this still be written in bash?
