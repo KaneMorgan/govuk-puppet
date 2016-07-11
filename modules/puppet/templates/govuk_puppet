@@ -15,9 +15,6 @@ listlocks() {
 	#uuid to the filename. Keep the reason, name and uuid as
 	#the lockfile content
 
-	#TODO
-	#If there are no locks, it should be detected and reported
-
 	if ls *.lock 1> /dev/null 2>&1; then
 
         	for filename in *.lock
@@ -95,6 +92,7 @@ disable)
 	if [[ -z "$REPLY" ]]; then
    		echo "Reason required; exiting."
    	exit 1;
+
 	else
    	#Create the lock
 		MYID=`date +%s`
@@ -102,7 +100,7 @@ disable)
 		echo "Creating $LOCKFILE .."
 		touch $LOCKFILE || { echo "Unable to create lock  '$LOCKFILE'" 1>&2 ; exit 1; }
 		echo "$REPLY - $MYID" >> $LOCKFILE
-		do_puppet
+		do_puppet #Disable puppet agent - helpfully the parameter required is the same
 	fi
 	
 	exit 0;
@@ -126,20 +124,48 @@ remove-lock)
 
 	MYID=$2
 
-	if [ -z "$MYID" ]
+	if [ -z "$MYID" ] #If no identifier is passed, exit.
 	then
 		echo "Identifier required; exiting.."
 		exit 1;
 	fi
 
-	for filename in *.$MYID.lock
-                do
-			#if [ ! -z $(grep "$MYID" $filename) ]; then
-				rm $filename && echo "Removed lock: $filename";
-			#fi
-                done
+	if ls *.$MYID.lock 1> /dev/null 2>&1; then #if the lock exists remove it
+
+		for filename in *.$MYID.lock
+                	do
+				#if [ ! -z $(grep "$MYID" $filename) ]; then
+					rm $filename && echo "Removed lock: $filename";
+				#fi
+                	done
+
+		#Now check if it any locks remain. If not, re-enable puppet agent.
+
+		if ls *.lock 1> /dev/null 2>&1; then #there are more locks
+
+			exit 0;
+
+		else #there are no locks left, re-enable
+
+			# Allow return code 2 in case -v/--detailed-exitcodes is passed.
+        		RBENV_VERSION=1.9.3 /usr/local/bin/govuk_setenv default puppet agent --onetime --no-daemonize "$@" || [ $? -eq 2 ]
+
+        		TIME_TOOK=$((`date +%s%3N`-START_TIME))
+        		echo "<%= @fqdn_metrics %>.puppet.run_duration:${TIME_TOOK}|ms" | nc -w 1 -u localhost 8125
+
+        		# We should only reach here if a last_run_summary was written.
+        		/usr/local/bin/puppet_passive_check_update >/dev/null
+        		exit 0;
+
+		fi
 	
-	exit 0;
+		exit 0;
+	
+	else
+		echo "No lock with identifier: $MYID found. Exiting.."
+		exit 1;
+	fi
+
 	;;
 
 enable)
@@ -154,8 +180,8 @@ enable)
 	then
 		for filename in *.lock
 		do
-                	#rm $filename
-               		echo $filename
+                	rm $filename
+               		echo "Removed: $filename"
         	done
 		do_puppet
 	fi
